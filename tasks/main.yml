@@ -1,0 +1,57 @@
+- name: Install gpg key
+  apt_key:
+    id: 79EA5ED4
+    url: http://repo.zabbix.com/zabbix-official-repo.key
+
+- name: Installing repository Ubuntu
+  apt_repository:
+    repo: "deb http://repo.zabbix.com/zabbix/{{ zabbix_agent_zabbix_version }}/ubuntu/ {{ ansible_distribution_release }} main"
+    state: present
+  when: ansible_distribution == "Ubuntu"
+
+- name: Installing zabbix-agent
+  apt:
+    pkg: "{{ zabbix_agent_package }}"
+    state: present
+    update_cache: yes
+    cache_valid_time: "{{ apt_cache_valid_time | default(3600) }}"
+
+- name: Enable the service
+  service:
+    name: "{{ zabbix_agent_service }}"
+    enabled: yes
+
+- name: Configure zabbix-agent
+  template: src=zabbix_agentd.conf.j2
+            dest=/etc/zabbix/zabbix_agentd.conf
+            owner=zabbix
+            group=zabbix
+            mode=0755
+  notify: zabbix-agent restart
+
+- name: Add custom configuration files
+  template:
+    src: "{{ item.template_path }}"
+    dest: "/etc/zabbix/zabbix_agentd.d/{{ item.name }}"
+    owner: zabbix
+    group: zabbix
+    mode: 0755
+  notify: zabbix-agent restart
+  with_items: "{{ zabbix_agent_custom_config }}"
+  when: ansible_distribution == "Ubuntu" and ansible_distribution_version | version_compare('16.04', '<')
+
+- name: Add custom configuration files
+  template:
+    src: "{{ item.template_path }}"
+    dest: "/etc/zabbix/zabbix_agentd.conf.d/{{ item.name }}"
+    owner: zabbix
+    group: zabbix
+    mode: 0755
+  notify: zabbix-agent restart
+  with_items: "{{ zabbix_agent_custom_config }}"
+  when: ansible_distribution == "Ubuntu" and ansible_distribution_version | version_compare('16.04', '>=')
+
+- name: Make sure the zabbix-agent service is running
+  service:
+    name: zabbix-agent
+    state: started
